@@ -1,0 +1,739 @@
+--- guide_frontend.pdf ---
+DataPrep AI Copilot 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 
+Guide Frontend 
+Rôle, Design & Architecture de l'interface utilisateur 
+Version 1.0 — Avril 2026 
+ 
+ 
+
+1. Résumé du projet 
+DataPrep AI Copilot est une application web qui automatise l'exploration et le prétraitement des 
+données tabulaires (CSV, Excel). Le système guide l'utilisateur à travers une boucle intelligente 
+: analyse statistique du dataset, détection des problèmes de qualité, proposition de solutions 
+expliquées par un LLM, application des transformations validées par l'utilisateur, puis re-analyse 
+jusqu'à obtenir un dataset propre et prêt pour le machine learning. 
+ 
+L'application est pensée comme un copilote pédagogique : l'utilisateur comprend et valide 
+chaque transformation avant qu'elle ne soit appliquée. Il n'y a pas de boîte noire — chaque 
+décision est expliquée, argumentée et réversible. 
+ 
+Dimension 
+Description 
+Utilisateur cible 
+Data scientists, analystes, développeurs ML qui veulent préparer un dataset 
+rapidement sans écrire de code à la main 
+Format données 
+CSV et Excel (.xlsx, .xls) jusqu'à 50 MB 
+Backend 
+FastAPI + PostgreSQL + Gemini (LLM) 
+Session 
+Anonyme par UUID, sans authentification, persisté en localStorage 
+Déploiement 
+Frontend sur Netlify, Backend sur Railway 
+ 
+2. Philosophie de l'interface 
+Le frontend n'est pas un tableau de bord passif. C'est une interface de dialogue active entre 
+l'utilisateur et le système. Trois principes guident sa conception : 
+ 
+• 
+Progressivité :  l'utilisateur n'est jamais submergé. Les informations apparaissent étape 
+par étape, dans l'ordre logique du flux de prétraitement. 
+• 
+Pédagogie :  chaque recommandation est expliquée avec le raisonnement du LLM 
+visible, pas seulement le résultat. 
+• 
+Contrôle :  l'utilisateur choisit, confirme, peut rejeter une suggestion et demander une 
+alternative. 
+ 
+Le frontend est un composant de premier ordre de l'application — pas un add-on. La qualité de 
+l'expérience utilisateur détermine directement la valeur perçue du produit. 
+ 
+3. Architecture des pages 
+
+L'application est organisée en 4 pages principales avec un flux de navigation linéaire mais non 
+bloquant — l'utilisateur peut revenir en arrière à tout moment. 
+ 
+Home  →  EDA  →  Diagnostic & Preprocessing  →  Export 
+ 
+3.1 Home — Upload & Configuration 
+Point d'entrée de l'application. L'utilisateur dépose son fichier et configure le contexte de son 
+analyse. 
+ 
+Composants à afficher 
+• 
+Zone de drag-and-drop pour l'upload CSV / Excel, avec indicateur de taille et format 
+accepté 
+• 
+Champ de sélection de la colonne cible (liste déroulante peuplée après upload) 
+• 
+Sélecteur du type de tâche : Classification / Régression / Exploration 
+• 
+Champ texte libre pour l'objectif de l'analyse (contexte transmis au LLM) 
+• 
+Bouton de validation qui lance l'analyse complète 
+ 
+Comportement attendu 
+• 
+À la soumission : appel POST /api/datasets/upload puis POST /api/analyze/{id} 
+• 
+Pendant le chargement : skeleton loader ou spinner avec message d'attente 
+• 
+En cas d'erreur fichier (format, taille) : message inline sous la zone de dépôt 
+ 
+3.2 EDA — Analyse Exploratoire 
+Page de visualisation des statistiques calculées sur le dataset. Chaque colonne a sa propre 
+section avec les graphiques adaptés à son type. 
+ 
+Composants à afficher 
+• 
+En-tête global : dimensions (lignes × colonnes), taux de doublons, types de colonnes 
+• 
+Carte par colonne avec : type sémantique, % valeurs manquantes, valeurs uniques 
+• 
+Graphiques selon le type de colonne : 
+◦ 
+Colonnes numériques : histogramme de distribution, box plot, indicateur de 
+skewness 
+◦ 
+Colonnes catégorielles : bar chart des top valeurs, pie chart si ≤ 6 catégories 
+◦ 
+Matrice de corrélation (heatmap) pour les colonnes numériques 
+◦ 
+Graphique de corrélation avec la cible (bar chart horizontal trié) 
+• 
+Section patterns de valeurs manquantes simultanées si détectées 
+ 
+
+Composants graphiques recommandés (Recharts) 
+Type de donnée 
+Graphique principal 
+Graphique secondaire 
+Numérique continue 
+BarChart (histogramme) 
+BoxPlot (custom SVG) 
+Catégorielle 
+BarChart horizontal 
+PieChart si ≤ 6 cats 
+Corrélations 
+Heatmap (custom) 
+ScatterPlot sur demande 
+Cible classification 
+PieChart classes 
+BarChart déséquilibre 
+Valeurs manquantes 
+BarChart % par colonne 
+Missing heatmap 
+ 
+3.3 Diagnostic & Preprocessing — Cœur de l'application 
+Page principale de l'application. Elle combine l'affichage des problèmes détectés et l'interface 
+de dialogue avec le LLM pour les résoudre un par un. 
+ 
+Structure de la page 
+La page est divisée en deux zones principales : 
+ 
+• 
+Panneau gauche (30%) :  liste ordonnée des problèmes détectés, chacun avec son 
+niveau de sévérité (🔴 critique / 🟡 moyen / 🟢 faible), la colonne concernée et une 
+description courte. 
+• 
+Panneau droit (70%) :  interface de traitement du problème sélectionné. Affiche le 
+contexte statistique, les propositions du LLM et le contrôle de décision. 
+ 
+Flux de traitement d'un problème 
+1. L'utilisateur clique sur un problème dans le panneau gauche 
+2. Le système appelle POST /api/recommend/{dataset_id} et affiche un loader 
+3. Les solutions proposées par le LLM apparaissent sous forme de cartes sélectionnables 
+(2-3 options) 
+4. L'utilisateur sélectionne une solution et clique sur Appliquer 
+5. Le système appelle POST /api/execute/{dataset_id} et re-analyse automatiquement 
+6. Si de nouveaux problèmes apparaissent, ils sont signalés et ajoutés à la file 
+ 
+Composants de la carte solution 
+• 
+Nom de la solution (ex: Imputation par la médiane) 
+• 
+Explication du LLM : pourquoi cette solution est adaptée à ce cas précis 
+• 
+Effets secondaires potentiels signalés clairement 
+• 
+Badge recommandé sur la solution conseillée par le LLM 
+• 
+Bouton Demander du code personnalisé si les solutions standard ne conviennent pas 
+ 
+
+État du progrès 
+• 
+Barre de progression : X problèmes résolus sur Y détectés 
+• 
+Badge de statut sur chaque problème dans le panneau gauche : À traiter / En cours / 
+Résolu / Ignoré 
+• 
+L'utilisateur peut marquer un problème comme Ignoré pour passer au suivant 
+ 
+3.4 Export — Dataset propre 
+Page finale affichée quand tous les problèmes critiques sont résolus (ou ignorés). 
+ 
+• 
+Résumé des transformations appliquées (liste chronologique) 
+• 
+Aperçu des 10 premières lignes du dataset transformé (tableau) 
+• 
+Comparaison avant / après : lignes, colonnes, % de valeurs manquantes 
+• 
+Bouton de téléchargement du dataset transformé (CSV ou format original) 
+• 
+Bouton de téléchargement du dataset original brut 
+ 
+4. Stack technique recommandée 
+ 
+Couche 
+Outil 
+Rôle 
+Framework 
+React + Vite 
+Interface réactive, build rapide 
+State global 
+Zustand 
+Session UUID + état du dataset courant 
+Requêtes API 
+TanStack Query + 
+Axios 
+Cache, loading states, refetch automatique 
+UI Composants 
+shadcn/ui 
+Composants accessibles, personnalisables 
+Graphiques 
+Recharts 
+Histogrammes, bar charts, pie charts 
+Routing 
+React Router v6 
+Navigation entre les 4 pages 
+Style 
+Tailwind CSS 
+Inclus avec shadcn/ui 
+ 
+5. Architecture des dossiers 
+frontend/src/ 
+├── api/ 
+│   ├── client.js          # Instance Axios (baseURL + headers session UUID) 
+│   ├── dataset.js         # upload, getDataset, preview, download 
+│   ├── eda.js             # runEDA 
+│   ├── diagnostic.js      # runDiagnostic 
+│   ├── analyze.js         # fullAnalysis (EDA + diagnostic + ordre LLM) 
+
+│   ├── recommend.js       # getRecommendations, generateCode 
+│   └── execute.js         # applyTransformation, executeCode 
+│ 
+├── components/ 
+│   ├── ui/                # shadcn/ui (Button, Card, Badge, Dialog...) 
+│   ├── charts/ 
+│   │   ├── HistogramChart.jsx 
+│   │   ├── BoxPlot.jsx 
+│   │   ├── BarChart.jsx 
+│   │   ├── PieChart.jsx 
+│   │   ├── CorrelationHeatmap.jsx 
+│   │   └── MissingPatternChart.jsx 
+│   ├── dataset/ 
+│   │   ├── UploadZone.jsx 
+│   │   ├── DatasetPreview.jsx 
+│   │   └── ColumnBadge.jsx 
+│   ├── eda/ 
+│   │   ├── ColumnCard.jsx 
+│   │   └── EDAOverview.jsx 
+│   ├── diagnostic/ 
+│   │   ├── ProblemList.jsx 
+│   │   ├── ProblemCard.jsx 
+│   │   └── SeverityBadge.jsx 
+│   └── preprocessing/ 
+│       ├── SolutionCard.jsx 
+│       ├── SolutionPicker.jsx 
+│       ├── CodeViewer.jsx 
+│       └── ProgressBar.jsx 
+│ 
+├── pages/ 
+│   ├── Home.jsx           # Upload + configuration 
+│   ├── EDA.jsx            # Visualisation statistiques 
+│   ├── Preprocessing.jsx  # Diagnostic + résolution interactive 
+│   └── Export.jsx         # Résumé + téléchargement 
+│ 
+├── store/ 
+│   └── sessionStore.js    # Zustand : sessionUUID + datasetId + edaResult + 
+problems 
+│ 
+├── hooks/ 
+│   ├── useDataset.js 
+│   ├── useAnalysis.js 
+│   └── usePreprocessing.js 
+│ 
+└── utils/ 
+    ├── formatters.js      # Nombres, pourcentages, dates 
+    └── colors.js          # Palettes sévérité, types de colonnes 
+ 
+6. État global (Zustand) 
+Le store Zustand centralise tout l'état de session. Il persiste le UUID en localStorage et 
+maintient les données actives en mémoire. 
+ 
+// store/sessionStore.js 
+const useSessionStore = create((set) => ({ 
+
+  sessionUUID:      null,           // UUID anonyme persisté 
+  datasetId:        null,           // ID du dataset actif 
+  datasetMeta:      null,           // nom, colonnes, target, task_type 
+  edaResult:        null,           // résultat EDA complet 
+  diagnosticResult: null,           // problèmes détectés 
+  orderedProblems:  [],             // problèmes dans l'ordre LLM 
+  problemStatuses:  {},             // { problemIndex: 
+'pending'|'resolved'|'skipped' } 
+  currentProblem:   null,           // problème en cours de traitement 
+  history:          [],             // transformations appliquées 
+})); 
+ 
+7. Design system 
+Palette de couleurs 
+Token 
+Valeur 
+Usage 
+primary 
+#1E3A5F 
+Titres, fond header 
+primary-mid 
+#2E6DA4 
+Liens, accents, bordures 
+accent 
+#E8A838 
+Badge recommandé, highlights 
+critical 
+#DC2626 
+Sévérité critique 
+warning 
+#D97706 
+Sévérité moyenne 
+success 
+#16A34A 
+Problème résolu, succès 
+ 
+Typographie 
+• 
+Police principale : Inter ou Geist (via Google Fonts ou CDN) 
+• 
+Taille de base : 14px / line-height 1.6 
+• 
+Titres de page : text-2xl bold 
+• 
+Labels de sections : text-sm uppercase tracking-wide text-muted 
+ 
+Composants shadcn/ui utilisés 
+• 
+Card — conteneur de colonne EDA, carte solution, carte problème 
+• 
+Badge — sévérité du problème, type sémantique de la colonne 
+• 
+Dialog — confirmation avant application d'une transformation 
+• 
+Progress — barre de progression du preprocessing 
+• 
+Tabs — basculer entre les vues d'une même colonne (stats / graphique) 
+• 
+Skeleton — état de chargement pendant les appels API 
+• 
+Tooltip — infobulles sur les métriques statistiques 
+ 
+
+8. Interactions clés à implémenter 
+ 
+Interaction 
+Déclencheur 
+Résultat 
+Upload dataset 
+Drop fichier ou click 
+Appel API upload + redirection 
+EDA 
+Sélectionner un problème 
+Click sur un item de la liste 
+Charge les recommandations 
+LLM 
+Choisir une solution 
+Click sur une carte 
+Mise en évidence de la 
+sélection 
+Appliquer 
+Click Appliquer 
+Dialog confirmation → exécution 
+→ re-analyse 
+Ignorer un problème 
+Click Ignorer 
+Statut skipped, passage au 
+suivant 
+Demander du code 
+Click Code personnalisé 
+Appel /generate-code → 
+affichage CodeViewer 
+Exécuter le code LLM 
+Click Exécuter le code 
+Appel /execute/code → re-
+analyse 
+Télécharger dataset 
+Click Télécharger 
+Appel /download → fichier dans 
+navigateur 
+ 
+
+--- liaison_back_front.pdf ---
+DataPrep AI Copilot 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 
+Liaison Backend / Frontend 
+Contrat API, flux de données & intégration technique 
+Version 1.0 — Avril 2026 
+ 
+ 
+
+1. Vue d'ensemble 
+Ce document décrit comment le frontend React communique avec le backend FastAPI. Il 
+couvre la configuration de base, le flux complet par page, et le détail de chaque endpoint : 
+méthode HTTP, payload envoyé, structure de réponse, et comment exploiter les données côté 
+interface. 
+ 
+Principe fondamental : le frontend ne contient aucune logique métier. Il envoie des actions, reçoit des 
+résultats et les affiche. Toute la logique de décision (analyse, diagnostic, LLM) est côté backend. 
+ 
+2. Configuration de base 
+2.1 Client Axios 
+Toutes les requêtes passent par une instance Axios centrale. Le header X-Session-UUID est 
+injecté automatiquement sur chaque requête à partir du store Zustand. 
+ 
+// src/api/client.js 
+import axios from 'axios'; 
+import { useSessionStore } from '../store/sessionStore'; 
+ 
+const client = axios.create({ 
+  baseURL: import.meta.env.VITE_API_BASE_URL, 
+  timeout: 60000,    // 60s — les appels LLM peuvent être longs 
+}); 
+ 
+client.interceptors.request.use((config) => { 
+  const uuid = useSessionStore.getState().sessionUUID; 
+  if (uuid) config.headers['X-Session-UUID'] = uuid; 
+  return config; 
+}); 
+ 
+export default client; 
+ 
+2.2 Session UUID 
+Au premier chargement de l'app, le frontend vérifie localStorage. S'il n'y a pas de UUID valide, il 
+en crée un via l'API et le persiste. 
+ 
+// src/store/sessionStore.js (init au démarrage App.jsx) 
+const stored = localStorage.getItem('session_uuid'); 
+if (stored) { 
+  // Vérifier que la session est encore valide 
+  GET /api/sessions/{stored} 
+  // → Si valide : utiliser le UUID existant 
+  // → Si expiré ou 404 : en créer un nouveau 
+} else { 
+
+  POST /api/sessions 
+  // → Stocker le UUID retourné dans localStorage + Zustand 
+} 
+ 
+3. Flux par page 
+3.1 Page Home — Upload 
+ 
+Étape 
+Appel API 
+Payload 
+Réponse exploitée 
+1. Upload 
+POST 
+/api/datasets/upload 
+FormData : file, 
+target_column, task_type, 
+objective 
+dataset.id → stocker dans 
+Zustand 
+2. Analyse 
+POST 
+/api/analyze/{id} 
+— (dataset_id dans l'URL) 
+eda, diagnostic, 
+ordered_problems, 
+justification 
+3. Redirect 
+— (navigation 
+React) 
+— 
+Redirection vers /eda avec 
+les données en store 
+ 
+L'appel /api/analyze est le seul appel lourd du démarrage. Il retourne EDA + Diagnostic + Ordre LLM 
+en une seule requête. Ne pas appeler /eda et /diagnostic séparément au chargement initial. 
+ 
+3.2 Page EDA — Visualisation 
+Les données EDA sont déjà disponibles dans le store Zustand après l'appel /analyze. Pas de 
+nouvel appel API nécessaire au montage de la page. 
+ 
+Mapping données → graphiques 
+Champ EDA reçu 
+Composant React 
+Graphique 
+col.numeric.histogram 
+HistogramChart 
+BarChart Recharts 
+(bins/fréquence) 
+col.numeric.q25, q75, min, 
+max 
+BoxPlot 
+SVG custom ou composant 
+dédié 
+col.categorical.top_values 
+CategoryBarChart 
+BarChart horizontal 
+eda.correlation_matrix 
+CorrelationHeatmap 
+Grille colorée custom 
+eda.target_correlations 
+TargetCorrelBar 
+BarChart horizontal trié 
+eda.top_correlation_pairs 
+ScatterSuggestion 
+Suggestions de scatter plots 
+eda.missing_combinations 
+MissingPatternTable 
+Tableau avec badges colonnes 
+
+Champ EDA reçu 
+Composant React 
+Graphique 
+eda.target_profile.class_pct 
+ClassDistPie 
+PieChart déséquilibre classes 
+ 
+3.3 Page Preprocessing — Flux de résolution 
+C'est la page la plus interactive. Chaque action déclenche un appel API dans un ordre précis. 
+ 
+Récupérer les recommandations 
+// Appel déclenché quand l'utilisateur sélectionne un problème 
+POST /api/recommend/{dataset_id} 
+Body: { "problem_index": 2 }      // index 0-based dans la liste 
+ 
+// Réponse 
+{ 
+  "solutions": [ 
+    { 
+      "id": "imputation_mediane", 
+      "nom": "Imputation par la médiane", 
+      "explication": "...", 
+      "effets_secondaires": "...", 
+      "requires_code": false, 
+      "transformations": [ 
+        { "function": "impute_median", "params": { "column": "Age" } } 
+      ], 
+      "code": null 
+    } 
+  ], 
+  "recommandation": { "id": "imputation_mediane", "justification": "..." } 
+} 
+ 
+Appliquer une transformation 
+// Après que l'utilisateur a cliqué Appliquer 
+POST /api/execute/{dataset_id} 
+Body: { "function": "impute_median", "params": { "column": "Age" } } 
+ 
+// Si la solution nécessite plusieurs transformations, les envoyer en séquence 
+// (chaque réponse retourne le dataset_id mis à jour) 
+ 
+// Réponse 
+{ 
+  "dataset_id": "...", 
+  "rows_before": 891, "rows_after": 891, 
+  "cols_before": 12,  "cols_after": 12, 
+  "eda": { ... },          // EDA re-calculé sur le dataset transformé 
+  "diagnostic": { ... }   // Nouveaux problèmes détectés 
+} 
+ 
+Exécuter du code LLM personnalisé 
+
+// Étape 1 : générer le code 
+POST /api/recommend/{dataset_id}/generate-code 
+Body: { "problem_index": 2, "user_intent": "Je veux grouper par Sex avant 
+d'imputer" } 
+ 
+// Réponse 
+{ 
+  "code": "df['Age'] = df.groupby('Sex')['Age'].transform(lambda x: 
+x.fillna(x.median()))", 
+  "description": "Imputation de l'âge par la médiane du groupe selon le sexe", 
+  "warning": null, 
+  "static_warnings": [] 
+} 
+ 
+// Étape 2 : afficher le code dans CodeViewer pour validation utilisateur 
+// Étape 3 : exécuter le code validé 
+POST /api/execute/{dataset_id}/code 
+Body: { "code": "df['Age'] = df.groupby..." } 
+ 
+3.4 Page Export — Download 
+// Aperçu du dataset (tableau dans l'interface) 
+GET /api/datasets/{dataset_id}/preview?n=10 
+// → { columns, dtypes, rows, total_rows } 
+ 
+// Téléchargement version transformée 
+GET /api/datasets/{dataset_id}/download?version=latest 
+// → Fichier CSV/Excel en streaming (Content-Disposition: attachment) 
+ 
+// Téléchargement version originale brute 
+GET /api/datasets/{dataset_id}/download?version=raw 
+ 
+4. Contrat API complet 
+ 
+Méthode 
+Endpoint 
+Page déclencheuse 
+Utilisation 
+POST 
+/api/sessions 
+App init 
+Créer une session UUID 
+GET 
+/api/sessions/{uuid} 
+App init 
+Vérifier session existante 
+POST 
+/api/datasets/upload 
+Home 
+Upload + enregistrement 
+dataset 
+GET 
+/api/datasets/{id} 
+Toutes 
+Métadonnées du dataset 
+actif 
+GET 
+/api/datasets/{id}/preview 
+Export 
+Aperçu des N premières 
+lignes 
+GET 
+/api/datasets/{id}/download 
+Export 
+Télécharger raw ou 
+transformé 
+
+Méthode 
+Endpoint 
+Page déclencheuse 
+Utilisation 
+PATCH 
+/api/datasets/{id}/target 
+Home 
+Modifier la cible après 
+upload 
+DELETE 
+/api/datasets/{id} 
+Home 
+Supprimer le dataset 
+POST 
+/api/analyze/{id} 
+Home → EDA 
+EDA + Diagnostic + Ordre 
+LLM 
+POST 
+/api/eda/{id} 
+EDA (optionnel) 
+EDA seul si besoin de 
+refresh 
+POST 
+/api/diagnostic/{id} 
+Preprocessing 
+Diagnostic seul si besoin 
+POST 
+/api/recommend/{id} 
+Preprocessing 
+Solutions LLM pour un 
+problème 
+POST 
+/api/recommend/{id}/generate-
+code 
+Preprocessing 
+Génération code Python 
+LLM 
+POST 
+/api/execute/{id} 
+Preprocessing 
+Appliquer une 
+transformation 
+POST 
+/api/execute/{id}/code 
+Preprocessing 
+Exécuter code Python LLM 
+GET 
+/api/messages/{session_uuid} 
+Toutes 
+Historique des échanges 
+LLM 
+POST 
+/api/messages 
+Preprocessing 
+Sauvegarder un échange 
+LLM 
+ 
+5. Gestion des erreurs frontend 
+ 
+Code HTTP 
+Situation 
+Comportement UI recommandé 
+400 
+Payload invalide (ex: colonne 
+inexistante) 
+Toast d'erreur inline sous le champ concerné 
+404 
+Dataset introuvable (session 
+expirée) 
+Redirection Home + message de session expirée 
+413 
+Fichier trop volumineux 
+Message sous la zone d'upload avec la limite 
+500 
+Erreur serveur inattendue 
+Toast d'erreur générique avec bouton Réessayer 
+503 
+LLM indisponible (rate limit) 
+Message spécifique avec countdown de réessai 
+Timeout (60s) 
+Appel LLM trop long 
+Toast avec option d'annulation et réessai 
+ 
+6. Stratégie de cache (TanStack Query) 
+
+TanStack Query gère automatiquement les loading states, le cache et le refetch. Voici les query 
+keys recommandées pour cohérence entre les composants. 
+ 
+// Clés de query recommandées 
+['session', uuid]                          // Session check 
+['dataset', datasetId]                     // Métadonnées dataset 
+['dataset', datasetId, 'preview']          // Aperçu lignes 
+['analysis', datasetId]                    // EDA + Diagnostic (résultat /analyze) 
+['recommend', datasetId, problemIndex]     // Solutions LLM par problème 
+ 
+// Invalidation après exécution d'une transformation 
+// → Invalider ['analysis', datasetId] pour forcer le refresh 
+queryClient.invalidateQueries({ queryKey: ['analysis', datasetId] }); 
+ 
+// Stale time recommandé 
+staleTime: 5 * 60 * 1000   // 5 min pour EDA (re-calculé seulement si 
+transformation) 
+staleTime: 0               // 0 pour les recommandations LLM (toujours frais) 
+ 
+7. Variables d'environnement frontend 
+# .env (développement local) 
+VITE_API_BASE_URL=http://localhost:8000 
+VITE_SESSION_EXPIRY_DAYS=7 
+ 
+# .env.production (Netlify) 
+VITE_API_BASE_URL=https://ton-backend.railway.app 
+VITE_SESSION_EXPIRY_DAYS=7 
+ 
+Sur Netlify, configurer VITE_API_BASE_URL dans les variables d'environnement du site (Settings → 
+Environment variables). Ne jamais commiter le .env de production dans Git. 
+ 
+
