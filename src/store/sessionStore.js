@@ -15,6 +15,7 @@ export const useSessionStore = create((set) => ({
   orderedProblems: [],
   problemStatuses: {}, // { problemIndex: 'pending'|'resolved'|'skipped' }
   currentProblem: null,
+  appliedTransformations: [], // historique textuel des transformations exécutées
   history: [],
 
   setSessionUUID: (uuid) => {
@@ -29,7 +30,7 @@ export const useSessionStore = create((set) => ({
   
   clearSession: () => {
     localStorage.removeItem('session_uuid')
-    set({ sessionUUID: null, datasetId: null, datasetMeta: null, edaResult: null, diagnosticResult: null, orderedProblems: [], problemStatuses: {}, currentProblem: null, history: [] })
+    set({ sessionUUID: null, datasetId: null, datasetMeta: null, edaResult: null, diagnosticResult: null, orderedProblems: [], problemStatuses: {}, currentProblem: null, appliedTransformations: [], history: [] })
   },
 
   setDatasetId: (id) => set({ datasetId: id }),
@@ -39,6 +40,7 @@ export const useSessionStore = create((set) => ({
     edaResult: eda,
     diagnosticResult: diagnostic,
     orderedProblems: ordered_problems,
+    appliedTransformations: [], // reset l'historique à chaque nouvelle analyse
     problemStatuses: ordered_problems?.reduce((acc, _, idx) => {
       acc[idx] = 'pending'
       return acc
@@ -70,6 +72,10 @@ export const useSessionStore = create((set) => ({
       // orderedProblems garde son ordre initial (LLM) ; seuls les statuts changent.
     };
   }),
+
+  addTransformationToHistory: (description) => set((state) => ({
+    appliedTransformations: [...state.appliedTransformations, description]
+  })),
 
   updateProblemStatus: (index, status) => set((state) => ({
     problemStatuses: { ...state.problemStatuses, [index]: status }
