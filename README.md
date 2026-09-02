@@ -1,16 +1,40 @@
-# React + Vite
+# Dataprep Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Interface utilisateur du **DataPrep AI Copilot**, une application de préparation automatisée des données tabulaires.
 
-Currently, two official plugins are available:
+## Stack Technique
+- **Framework** : React 19 (via Vite)
+- **State Management** : Zustand, React Query
+- **Styling** : Tailwind CSS, Radix UI (Headless), Class-Variance-Authority, Lucide React
+- **Routing** : React Router v7
+- **Graphiques** : Recharts
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Installation en local
 
-## React Compiler
+1. Installer les dépendances :
+   ```bash
+   npm install
+   ```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. Variables d'environnement :
+   Créez un fichier `.env` à la racine de `dataprep-frontend` contenant l'URL de votre backend local :
+   ```env
+   VITE_API_URL=http://localhost:8000
+   ```
 
-## Expanding the ESLint configuration
+3. Démarrer le serveur de développement :
+   ```bash
+   npm run dev
+   ```
+   L'application sera accessible sur `http://localhost:5173` (ou un port défini par Vite).
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Scripts disponibles
+
+- `npm run dev` : Lance le serveur de développement.
+- `npm run build` : Compile le projet pour la production (fichiers dans `/dist`).
+- `npm run preview` : Lance une prévisualisation de la build de production localement.
+- `npm run lint` : Lance l'analyseur de code ESLint.
+
+## Déploiement
+
+Le déploiement est configuré pour **Vercel**. Le dépôt contient un fichier `vercel.json` à la racine pour automatiser et configurer le routage du build. Consultez le fichier `GUIDE_DEPLOIEMENT.md` situé à la racine du projet principal pour suivre les instructions étape par étape.
