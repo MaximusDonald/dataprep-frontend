@@ -19,7 +19,7 @@ Interface utilisateur du **DataPrep AI Copilot**, une application de préparatio
 2. Variables d'environnement :
    Créez un fichier `.env` à la racine de `dataprep-frontend` contenant l'URL de votre backend local :
    ```env
-   VITE_API_URL=http://localhost:8000
+   VITE_API_BASE_URL=http://localhost:8000
    ```
 
 3. Démarrer le serveur de développement :

@@ -2,7 +2,7 @@ import axios from 'axios';
 import { useSessionStore } from '../store/sessionStore';
 
 const client = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://dataprep-backend.onrender.com',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
   timeout: 60000, // 60s for LLM calls
 });
 
