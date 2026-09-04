@@ -1,6 +1,12 @@
 # Dataprep Frontend
 
-Interface utilisateur du **DataPrep AI Copilot**, une application de préparation automatisée des données tabulaires.
+Interface utilisateur du **DataPrep AI Copilot**, une application web interactive de préparation automatisée des données tabulaires propulsée par l'Intelligence Artificielle.
+
+## Fonctionnalités Clés
+- **Import et Analyse** : Importation de fichiers CSV, affichage des statistiques descriptives (EDA) et diagnostic des problèmes structurels.
+- **Agent IA (v2)** : L'IA génère dynamiquement le code Python (Pandas/Numpy) optimal pour traiter les problèmes de données, sans dépendre d'un catalogue de fonctions limitatif.
+- **Résolution en Cascade** : Le système détecte automatiquement les problèmes résolus indirectement suite à l'application d'une correction.
+- **Raffinement Interactif** : Possibilité de discuter avec l'IA pour ajuster une solution, imposer une contrainte métier, ou demander des explications.
 
 ## Stack Technique
 - **Framework** : React 19 (via Vite)
@@ -17,7 +23,7 @@ Interface utilisateur du **DataPrep AI Copilot**, une application de préparatio
    ```
 
 2. Variables d'environnement :
-   Créez un fichier `.env` à la racine de `dataprep-frontend` contenant l'URL de votre backend local :
+   Créez un fichier `.env` à la racine de `dataprep-frontend` :
    ```env
    VITE_API_BASE_URL=http://localhost:8000
    ```
@@ -26,7 +32,7 @@ Interface utilisateur du **DataPrep AI Copilot**, une application de préparatio
    ```bash
    npm run dev
    ```
-   L'application sera accessible sur `http://localhost:5173` (ou un port défini par Vite).
+   L'application sera accessible sur `http://localhost:5173` (ou le port défini par Vite).
 
 ## Scripts disponibles
 
@@ -37,4 +43,7 @@ Interface utilisateur du **DataPrep AI Copilot**, une application de préparatio
 
 ## Déploiement
 
-Le déploiement est configuré pour **Vercel**. Le dépôt contient un fichier `vercel.json` à la racine pour automatiser et configurer le routage du build. Consultez le fichier `GUIDE_DEPLOIEMENT.md` situé à la racine du projet principal pour suivre les instructions étape par étape.
+Le projet est configuré pour être déployé facilement sur **Vercel**. Un fichier `vercel.json` situé à la racine s'assure du bon comportement du routage (SPA fallback).
+Pour des instructions détaillées de déploiement, consultez le fichier `GUIDE_DEPLOIEMENT.md` situé à la racine du projet principal.
+
+Pour utiliser la version mise en production sur Vercel: https://dataprep-frontend.vercel.app
