@@ -13,7 +13,7 @@ export const useSessionStore = create((set) => ({
   edaResult: null,
   diagnosticResult: null,
   orderedProblems: [],
-  problemStatuses: {}, // { problemIndex: 'pending'|'resolved'|'skipped' }
+  problemStatuses: {}, // { problemIndex: 'pending'|'resolved'|'auto-resolved'|'skipped' }
   currentProblem: null,
   appliedTransformations: [], // historique textuel des transformations exécutées
   history: [],
@@ -47,21 +47,27 @@ export const useSessionStore = create((set) => ({
     }, {}) || {}
   }),
 
+  /**
+   * Appelé après chaque exécution réussie.
+   * Compare le nouveau diagnostic avec la liste des problèmes ordonnés et :
+   *   - marque 'auto-resolved' les problèmes qui ont disparu du diagnostic (résolus en cascade)
+   *   - conserve 'resolved' et 'skipped' inchangés
+   */
   updateAfterExecution: ({ eda, diagnostic }) => set((state) => {
-    // Le backend renvoie le nouveau diagnostic avec seulement les problèmes restants.
-    // On identifie un problème par (column, category, description).
     const problemKey = (p) => `${p.column ?? ''}|${p.category}|${p.description}`;
 
     const freshKeys = new Set(
       (diagnostic?.problems ?? []).map(problemKey)
     );
 
-    // Recalcule les statuts : les problèmes qui ont disparu du diagnostic
-    // sont automatiquement marqués 'resolved' (ex: colonne supprimée).
     const newStatuses = { ...state.problemStatuses };
+    let autoResolvedCount = 0;
+
     state.orderedProblems.forEach((prob, idx) => {
       if (!freshKeys.has(problemKey(prob)) && newStatuses[idx] === 'pending') {
-        newStatuses[idx] = 'resolved';
+        // Ce problème a disparu du diagnostic sans action manuelle => auto-résolu
+        newStatuses[idx] = 'auto-resolved';
+        autoResolvedCount++;
       }
     });
 
@@ -69,7 +75,7 @@ export const useSessionStore = create((set) => ({
       edaResult:        eda,
       diagnosticResult: diagnostic,
       problemStatuses:  newStatuses,
-      // orderedProblems garde son ordre initial (LLM) ; seuls les statuts changent.
+      _lastAutoResolved: autoResolvedCount, // pour éventuellement afficher un toast
     };
   }),
 

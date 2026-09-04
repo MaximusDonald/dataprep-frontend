@@ -5,7 +5,7 @@ import client from '../api/client';
 import {
   LayoutDashboard, CheckCircle2, Loader2, Sparkles,
   Code, Play, SkipForward, Download, AlertCircle, X,
-  MessageSquare, RefreshCw, HelpCircle
+  MessageSquare, RefreshCw, HelpCircle, Zap
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -26,12 +26,13 @@ function Toast({ message, type = 'error', onClose }) {
 
 // ── Progress Bar ──────────────────────────────────────────────────────────────
 function ProgressBar({ statuses, total }) {
-  const resolved = Object.values(statuses).filter(s => s === 'resolved').length;
-  const pct = total > 0 ? Math.round((resolved / total) * 100) : 0;
+  const done    = Object.values(statuses).filter(s => s !== 'pending').length;
+  const resolved = Object.values(statuses).filter(s => s === 'resolved' || s === 'auto-resolved').length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs font-medium text-muted-foreground">
-        <span>{resolved} / {total} résolus</span><span>{pct}%</span>
+        <span>{resolved} résolu(s) · {Object.values(statuses).filter(s => s === 'skipped').length} ignoré(s) — {done} / {total} traités</span><span>{pct}%</span>
       </div>
       <div className="h-2 bg-muted rounded-full overflow-hidden">
         <div className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
@@ -107,30 +108,37 @@ export default function Preprocessing() {
 
   const showToast = useCallback((message, type = 'error') => setToast({ message, type }), []);
 
-  const resolvedCount = Object.values(problemStatuses).filter(s => s === 'resolved').length;
-  const allDone = orderedProblems && resolvedCount === orderedProblems.length;
+  const resolvedCount = Object.values(problemStatuses).filter(s => s === 'resolved' || s === 'auto-resolved').length;
+  const allDone = orderedProblems && Object.values(problemStatuses).filter(s => s === 'pending').length === 0 && orderedProblems.length > 0;
 
-  const getOriginalIndex = (problem) => {
-    if (!diagnosticResult?.problems) return -1;
-    return diagnosticResult.problems.findIndex(p =>
+  const getOriginalIndex = (problem, freshDiagnostic = null) => {
+    const diag = freshDiagnostic || diagnosticResult;
+    if (!diag?.problems) return -1;
+    return diag.problems.findIndex(p =>
       p.column === problem.column && p.category === problem.category && p.description === problem.description
     );
   };
 
   // ── Select problem → fetch recommendations ──────────────────────────────────
-  const handleSelectProblem = async (index) => {
+  const handleSelectProblem = async (index, freshStatuses = null, freshDiagnostic = null) => {
+    const statuses = freshStatuses || problemStatuses;
+    const status = statuses[index];
+    // Ne pas charger les recommandations si le problème est déjà traité
+    if (status && status !== 'pending') {
+      setSelectedIndex(null);
+      return;
+    }
     setSelectedIndex(index);
     setRecommendations(null);
     setCustomCode('');
     setCodeIntent('');
 
     const problem = orderedProblems[index];
-    const originalIndex = getOriginalIndex(problem);
+    const originalIndex = getOriginalIndex(problem, freshDiagnostic);
     if (originalIndex === -1) return;
 
     setIsLoadingRecs(true);
     try {
-      // Axe 1+3 : on envoie l'historique des transformations déjà faites
       const res = await client.post(`/api/recommend/${datasetId}`, {
         problem_index: originalIndex,
         applied_transformations: appliedTransformations,
@@ -143,12 +151,14 @@ export default function Preprocessing() {
     }
   };
 
-  const goToNextPending = useCallback((resolvedIdx) => {
+  // goToNextPending reçoit les statuts frais pour éviter la stale closure
+  const goToNextPending = useCallback((resolvedIdx, freshStatuses, freshDiagnostic = null) => {
     if (!orderedProblems) return;
-    const next = orderedProblems.findIndex((_, i) => problemStatuses[i] === 'pending' && i !== resolvedIdx);
-    if (next !== -1) handleSelectProblem(next);
+    const statuses = freshStatuses || problemStatuses;
+    const next = orderedProblems.findIndex((_, i) => statuses[i] === 'pending' && i !== resolvedIdx);
+    if (next !== -1) handleSelectProblem(next, freshStatuses, freshDiagnostic);
     else setSelectedIndex(null);
-  }, [orderedProblems, problemStatuses]); // eslint-disable-line
+  }, [orderedProblems, problemStatuses, diagnosticResult]); // eslint-disable-line
 
   // ── Apply solution — Axe 1 : always uses code endpoint ─────────────────────
   const handleApplySolution = async (sol) => {
@@ -157,14 +167,34 @@ export default function Preprocessing() {
     setIsExecuting(true);
     try {
       const res = await client.post(`/api/execute/${datasetId}/code`, { code });
-      updateAfterExecution({ eda: res.data.eda, diagnostic: res.data.diagnostic });
+      const { eda, diagnostic } = res.data;
+
+      // Calculer les nouveaux statuts AVANT les appels de state pour goToNextPending
+      const problemKey = (p) => `${p.column ?? ''}|${p.category}|${p.description}`;
+      const freshKeys = new Set((diagnostic?.problems ?? []).map(problemKey));
+      const newStatuses = { ...problemStatuses, [selectedIndex]: 'resolved' };
+      orderedProblems.forEach((prob, idx) => {
+        if (!freshKeys.has(problemKey(prob)) && newStatuses[idx] === 'pending') {
+          newStatuses[idx] = 'auto-resolved';
+        }
+      });
+
+      const autoCount = Object.values(newStatuses).filter(s => s === 'auto-resolved').length
+        - Object.values(problemStatuses).filter(s => s === 'auto-resolved').length;
+
+      updateAfterExecution({ eda, diagnostic });
       updateProblemStatus(selectedIndex, 'resolved');
-      // Axe 3 : enregistrer dans l'historique
-      const desc = `[${orderedProblems[selectedIndex].column || 'Global'}] ${sol.nom || sol.name} : ${sol.explication || sol.explanation || ''}`;
-      addTransformationToHistory(desc.slice(0, 120));
+      addTransformationToHistory(
+        `[${orderedProblems[selectedIndex].column || 'Global'}] ${sol.nom || sol.name} : ${sol.explication || sol.explanation || ''}`.slice(0, 120)
+      );
       setRecommendations(null);
-      showToast('Transformation appliquée avec succès !', 'success');
-      goToNextPending(selectedIndex);
+
+      if (autoCount > 0) {
+        showToast(`✅ Transformation appliquée ! ${autoCount} problème(s) supplémentaire(s) auto-résolu(s) en cascade.`, 'success');
+      } else {
+        showToast('Transformation appliquée avec succès !', 'success');
+      }
+      goToNextPending(selectedIndex, newStatuses, diagnostic);
     } catch (err) {
       showToast("Erreur lors de l'exécution : " + (err.response?.data?.detail || err.message));
     } finally {
@@ -222,12 +252,29 @@ export default function Preprocessing() {
     setIsExecuting(true);
     try {
       const res = await client.post(`/api/execute/${datasetId}/code`, { code: customCode });
-      updateAfterExecution({ eda: res.data.eda, diagnostic: res.data.diagnostic });
+      const { eda, diagnostic } = res.data;
+
+      const problemKey = (p) => `${p.column ?? ''}|${p.category}|${p.description}`;
+      const freshKeys = new Set((diagnostic?.problems ?? []).map(problemKey));
+      const newStatuses = { ...problemStatuses, [selectedIndex]: 'resolved' };
+      orderedProblems.forEach((prob, idx) => {
+        if (!freshKeys.has(problemKey(prob)) && newStatuses[idx] === 'pending') {
+          newStatuses[idx] = 'auto-resolved';
+        }
+      });
+      const autoCount = Object.values(newStatuses).filter(s => s === 'auto-resolved').length
+        - Object.values(problemStatuses).filter(s => s === 'auto-resolved').length;
+
+      updateAfterExecution({ eda, diagnostic });
       updateProblemStatus(selectedIndex, 'resolved');
       addTransformationToHistory(`[${orderedProblems[selectedIndex]?.column || 'Global'}] Code personnalisé`);
       setCustomCode(''); setRecommendations(null);
-      showToast('Code exécuté avec succès !', 'success');
-      goToNextPending(selectedIndex);
+      if (autoCount > 0) {
+        showToast(`✅ Code exécuté ! ${autoCount} problème(s) supplémentaire(s) auto-résolu(s).`, 'success');
+      } else {
+        showToast('Code exécuté avec succès !', 'success');
+      }
+      goToNextPending(selectedIndex, newStatuses, diagnostic);
     } catch (err) {
       showToast("Erreur lors de l'exécution du code : " + (err.response?.data?.detail || err.message));
     } finally {
@@ -284,19 +331,25 @@ export default function Preprocessing() {
               ) : orderedProblems.map((prob, idx) => {
                 const status = problemStatuses[idx];
                 const isSelected = selectedIndex === idx;
+                const isDone = status === 'resolved' || status === 'auto-resolved';
                 let sev = 'bg-success/10 text-success border-success/20';
                 if (prob.severity === 'medium')   sev = 'bg-warning/10 text-warning border-warning/20';
                 if (prob.severity === 'critical')  sev = 'bg-critical/10 text-critical border-critical/20';
                 return (
-                  <div key={idx} onClick={() => status !== 'resolved' && handleSelectProblem(idx)}
+                  <div key={idx} onClick={() => !isDone && handleSelectProblem(idx)}
                     className={cn('p-3 rounded-lg border cursor-pointer transition-all',
                       isSelected ? 'border-accent ring-1 ring-accent/20 bg-accent/5' : 'border-border hover:border-primary/30',
-                      status === 'resolved' ? 'opacity-50 grayscale cursor-not-allowed' : '',
+                      isDone ? 'opacity-50 grayscale cursor-not-allowed' : '',
                       status === 'skipped' ? 'opacity-60 italic' : '',
                     )}>
                     <div className="flex items-start justify-between mb-1.5">
                       <span className={cn('text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm border', sev)}>{prob.severity}</span>
-                      {status === 'resolved' && <CheckCircle2 className="w-4 h-4 text-success" />}
+                      {status === 'resolved'      && <CheckCircle2 className="w-4 h-4 text-success" />}
+                      {status === 'auto-resolved' && (
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-accent bg-accent/10 border border-accent/20 px-1.5 py-0.5 rounded-full">
+                          <Zap className="w-3 h-3" /> Auto
+                        </span>
+                      )}
                       {status === 'skipped'  && <span className="text-[10px] text-muted-foreground font-medium">ignoré</span>}
                     </div>
                     <h3 className="font-medium text-sm line-clamp-1">{prob.column ? `${prob.column} (${prob.category})` : prob.category}</h3>
