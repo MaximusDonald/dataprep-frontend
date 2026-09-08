@@ -1,8 +1,9 @@
 import { Outlet, NavLink } from "react-router-dom"
-import { Database, LayoutDashboard, Wand2, Download } from "lucide-react"
+import { Database, LayoutDashboard, Wand2, Download, Archive } from "lucide-react"
 import { cn } from "../../lib/utils"
 
 const navItems = [
+  { to: "/datasets",       label: "Datasets",      icon: Archive },
   { to: "/eda",            label: "EDA",           icon: LayoutDashboard },
   { to: "/preprocessing",  label: "Preprocessing",  icon: Wand2 },
   { to: "/export",         label: "Export",         icon: Download },
