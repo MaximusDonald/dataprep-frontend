@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Archive, Trash2, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 import client from '../api/client';
 import { useSessionStore } from '../store/sessionStore';
-import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { cn } from '../lib/utils';
 
 export default function Datasets() {
@@ -138,7 +136,10 @@ export default function Datasets() {
                   )}
                 </td>
                 <td className="p-4 text-muted-foreground">
-                  {formatDistanceToNow(new Date(d.created_at), { addSuffix: true, locale: fr })}
+                  {new Date(d.created_at).toLocaleDateString('fr-FR', {
+                    day: '2-digit', month: 'short', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                  })}
                 </td>
                 <td className="p-4">
                   {d.is_transformed ? (
